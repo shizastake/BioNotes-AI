@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<!-- 
+  =====================================================================
+  BioNotes AI — Human-Style Biology Notes Generator
+  Tech: HTML5, Custom CSS3 (styles.css), Bootstrap 5 (CDN), 
+        Bootstrap Icons (CDN), Vanilla JS (script.js), 
+        html2pdf.js (CDN), external dataset (data.json)
+  Theme: Blue, White & Sky Blue palette only. No emojis anywhere.
+
+  FILES IN THIS PROJECT:
+    index.html   -> this file (structure)
+    styles.css   -> all custom styling
+    script.js    -> all app logic (search, render, PDF export, fonts)
+    data.json    -> the 50-topic biology dataset
+
+  HOW TO RUN:
+    Because script.js uses fetch() to load data.json, this project
+    must be opened through a local server, NOT by double-clicking
+    index.html directly (browsers block file:// fetch for security).
+    Easiest options:
+      1) VS Code -> install "Live Server" extension -> "Go Live"
+      2) Terminal -> run: npx serve .
+      3) Terminal -> run: python -m http.server  (then open the shown URL)
+  =====================================================================
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioNotes AI | Human-Style Biology Notes Generator</title>
+
+    <!-- ============================= -->
+    <!-- Bootstrap 5 CSS (CDN)          -->
+    <!-- ============================= -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- ============================= -->
+    <!-- Bootstrap Icons (CDN)          -->
+    <!-- Used for ALL visual indicators -->
+    <!-- instead of emojis              -->
+    <!-- ============================= -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- ============================= -->
+    <!-- Google Fonts: Inter/Poppins    -->
+    <!-- (UI) + handwriting font options -->
+    <!-- ============================= -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800&family=Kalam:wght@300;400;700&family=Caveat:wght@400;500;600;700&family=Patrick+Hand&family=Shadows+Into+Light&family=Architects+Daughter&family=Gochi+Hand&family=Homemade+Apple&display=swap" rel="stylesheet">
+
+    <!-- ============================= -->
+    <!-- Custom CSS (this project's own stylesheet) -->
+    <!-- ============================= -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- =====================================================================
+         NAVBAR
+         Navy Blue background bar with app title and topic-count badge
+    ===================================================================== -->
+    <nav class="navbar app-navbar navbar-expand-lg py-2">
+        <div class="container d-flex align-items-center justify-content-between">
+            <span class="navbar-brand brand-block mb-0">
+                <span class="brand-icon-box"><i class="bi bi-journal-bookmark-fill"></i></span>
+                <span>
+                    <p class="brand-title">BioNotes AI</p>
+                    <p class="brand-subtitle">Human Biology Notes Generator</p>
+                </span>
+            </span>
+            <span class="d-flex align-items-center gap-2">
+                <!-- <span class="topic-badge d-none d-sm-inline-flex">
+                    API Key Setting
+                </span> -->
+                <button type="button" id="openApiSettingsBtn" class="btn-settings-gear" data-bs-toggle="modal" data-bs-target="#apiSettingsModal" title="Connect AI (Gemini / ChatGPT) API Key">
+                    <i class="bi bi-gear-fill"></i>
+                </button>
+            </span>
+        </div>
+    </nav>
+
+    <!-- =====================================================================
+         API SETTINGS MODAL
+         Lets the user connect their own Gemini or OpenAI API key so
+         "Generate Human Notes" can call a real AI model for ANY topic
+         and draw a real AI-generated SVG diagram. If left empty, the
+         app quietly falls back to the built-in 50-topic dataset.
+    ===================================================================== -->
+    <div class="modal fade" id="apiSettingsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content api-settings-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-cpu-fill me-2"></i>Connect AI Model (Optional)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-help-text">
+                        Add your own API key to generate deep, AI-written notes (with a real diagram) for
+                        <strong>any</strong> biology topic — not just the built-in topic. Your key is stored only
+                        in this browser's <code>localStorage</code> and is sent directly from your browser to
+                        the provider you choose; it is never sent anywhere else.
+                    </p>
+
+                    <label class="form-label" for="aiProviderSelect"><i class="bi bi-diagram-2"></i> AI Provider</label>
+                    <select id="aiProviderSelect" class="form-select mb-3">
+                        <option value="none">No AI — use local dataset only</option>
+                        <option value="gemini">Google Gemini API</option>
+                        <option value="openai">OpenAI (ChatGPT) API</option>
+                    </select>
+
+                    <label class="form-label" for="aiApiKeyInput"><i class="bi bi-key-fill"></i> API Key</label>
+                    <input type="password" id="aiApiKeyInput" class="form-control mb-2" placeholder="Paste your API key here" autocomplete="off">
+                    <div class="form-text mb-3">
+                        Get a free Gemini key at <span class="text-nowrap">aistudio.google.com/apikey</span>, or an
+                        OpenAI key at <span class="text-nowrap">platform.openai.com/api-keys</span>.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="clearApiSettingsBtn" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-trash3"></i> Clear Saved Key
+                    </button>
+                    <button type="button" id="saveApiSettingsBtn" class="btn btn-generate btn-sm" data-bs-dismiss="modal">
+                        <i class="bi bi-check2-circle"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         AI LOADING OVERLAY — shown while waiting on the Gemini/OpenAI response
+    ===================================================================== -->
+    <div id="aiLoadingOverlay" class="ai-loading-overlay" style="display:none;">
+        <div class="ai-loading-box">
+            <i class="bi bi-arrow-repeat spin-icon"></i>
+            <p id="aiLoadingText">Querying AI Model &amp; Generating Vector Diagram...</p>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         HERO / INTRO STRIP
+    ===================================================================== -->
+    <section class="hero-strip">
+        <div class="container">
+            <span class="hero-eyebrow"><i class="bi bi-stars"></i> AI-Assisted Study Notes</span>
+            <h1>Turn Biology Topics Into <span>Human, Handwritten-Style</span> Notes</h1>
+            <p class="hero-lede">Search any biology topic, pick one from the dropdown, or paste your own reference
+               text — BioNotes AI structures it into an easy-to-read notebook page with Roman Urdu explanations,
+               examples, a diagram suggestion, and an exam tip.</p>
+
+            <!-- <div class="hero-stats-row">
+                <div class="hero-stat-card">
+                    <span class="stat-icon"><i class="bi bi-journal-check"></i></span>
+                    <span>
+                        <span class="stat-number d-block">70+</span>
+                        <span class="stat-label">Ready Topics</span>
+                    </span>
+                </div>
+                <div class="hero-stat-card">
+                    <span class="stat-icon"><i class="bi bi-diagram-3"></i></span>
+                    <span>
+                        <span class="stat-number d-block">6</span>
+                        <span class="stat-label">Categories Covered</span>
+                    </span>
+                </div>
+                <div class="hero-stat-card">
+                    <span class="stat-icon"><i class="bi bi-file-earmark-pdf"></i></span>
+                    <span>
+                        <span class="stat-number d-block">1-Click</span>
+                        <span class="stat-label">PDF Export</span>
+                    </span>
+                </div>
+            </div> -->
+        </div>
+    </section>
+
+    <!-- =====================================================================
+         MAIN CONTENT
+    ===================================================================== -->
+    <main class="container pb-5">
+
+        <!-- Error banner — shown when an AI API call fails (invalid key, rate limit, network error) -->
+        <div id="aiErrorBanner" class="ai-error-banner" style="display:none;">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span id="aiErrorBannerText"></span>
+            <button type="button" id="aiErrorBannerClose" class="btn-close-banner"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <!-- =================================================================
+             CONTROL PANEL — search box, category dropdown, textarea, button
+        ================================================================= -->
+        <div class="control-panel position-relative">
+
+            <!-- Header bar: gives the panel a professional "app module" feel -->
+            <div class="control-panel-header">
+                <h6><i class="bi bi-sliders2 me-2" style="color:var(--royal-blue);"></i>Note Generator Settings</h6>
+                <span class="step-eyebrow">Step 1 of 2 — Choose Topic</span>
+            </div>
+
+            <div class="control-panel-body">
+                <div class="row g-3">
+
+                    <!-- Search input with icon and live suggestions -->
+                    <div class="col-md-6 position-relative">
+                        <label class="form-label" for="topicSearchInput">
+                            <i class="bi bi-search"></i> Search a Topic
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" id="topicSearchInput" class="form-control"
+                                   placeholder="e.g. Cell, Photosynthesis, DNA, Osmosis..." autocomplete="off">
+                        </div>
+                        <!-- Suggestion dropdown populated dynamically by JS -->
+                        <div id="searchSuggestions" class="search-suggestions"></div>
+                    </div>
+
+                    <!-- Dropdown listing all 50 topics grouped by category -->
+                    <div class="col-md-6">
+                        <label class="form-label" for="topicSelectDropdown">
+                            <i class="bi bi-list-ul"></i> Or Choose From Restore Topics
+                        </label>
+                        <select id="topicSelectDropdown" class="form-select">
+                            <option value="">-- Select a topic by category --</option>
+                            <!-- <optgroup> blocks injected dynamically by JS -->
+                        </select>
+                    </div>
+
+                    <!-- Category quick-filter pills -->
+                    <div class="col-12">
+                        <span class="me-2" style="font-size:0.8rem; color:#64748b; font-weight:600;">
+                            <i class="bi bi-funnel"></i> Quick Categories:
+                        </span>
+                        <span id="categoryPillsContainer"></span>
+                    </div>
+                </div>
+
+                <div class="control-divider"></div>
+
+                <div class="row g-3 align-items-end">
+                    <!-- Optional textarea for custom reference context -->
+                    <div class="col-12">
+                        <label class="form-label" for="customContextInput">
+                            <i class="bi bi-file-earmark-text"></i> Optional: Paste Your Own Reference Text
+                        </label>
+                        <textarea id="customContextInput" class="form-control" rows="2"
+                            placeholder="Paste any biology definition or paragraph here to generate notes from it..."></textarea>
+                    </div>
+
+                    <!-- Font picker: lets the user change the handwriting note font -->
+                    <div class="col-md-5">
+                        <label class="form-label" for="noteFontSelect">
+                            <i class="bi bi-fonts"></i> Note Handwriting Font
+                        </label>
+                        <select id="noteFontSelect" class="form-select">
+                            <optgroup label="Handwriting Style">
+                                <option value="'Kalam', cursive" selected>Kalam (Default)</option>
+                                <option value="'Caveat', cursive">Caveat</option>
+                                <option value="'Patrick Hand', cursive">Patrick Hand</option>
+                                <option value="'Shadows Into Light', cursive">Shadows Into Light</option>
+                                <option value="'Architects Daughter', cursive">Architects Daughter</option>
+                                <option value="'Gochi Hand', cursive">Gochi Hand</option>
+                                <option value="'Homemade Apple', cursive">Homemade Apple</option>
+                            </optgroup>
+                            <optgroup label="Clean / Printed Style">
+                                <option value="'Poppins', sans-serif">Poppins (Clean)</option>
+                                <option value="'Inter', sans-serif">Inter (Clean)</option>
+                                <option value="Georgia, serif">Georgia (Print)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <!-- Generate button -->
+                    <div class="col-md-7 d-flex justify-content-end align-items-end gap-2">
+                        <span id="aiModeIndicator" class="ai-mode-pill">
+                            <i class="bi bi-hdd-network"></i> Local Dataset Mode
+                        </span>
+                        <button id="generateNotesBtn" class="btn btn-generate">
+                            <i class="bi bi-magic"></i> Generate Notes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =================================================================
+             NOTEBOOK OUTPUT AREA
+             Hidden by default — only appears after the user searches/selects
+             a topic and clicks "Generate Human Notes" (see script.js).
+        ================================================================= -->
+        <div class="notebook-wrapper" id="notebookWrapper" style="display:none;">
+
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <span class="step-eyebrow" style="color:var(--royal-blue); font-size:0.72rem; font-weight:700; letter-spacing:0.6px; text-transform:uppercase;">
+                    <i class="bi bi-file-earmark-richtext me-1"></i>Step 2 of 2 — Your Generated Note
+                </span>
+                <!-- Download button appears once a note is generated -->
+                <div id="downloadBtnWrapper" style="display:none !important;">
+                    <button id="downloadPdfBtn" class="btn btn-pdf">
+                        <i class="bi bi-file-earmark-pdf-fill"></i> Download Note as PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- The actual notebook card that gets exported to PDF -->
+            <div id="notePaperCard" class="notebook-page">
+                <!-- Dynamic note content injected here by JS -->
+                <div id="noteContentBlock"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- =====================================================================
+         FOOTER
+    ===================================================================== -->
+    <footer class="app-footer">
+        <div class="container">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="footer-brand"><i class="bi bi-journal-bookmark-fill"></i>BioNotes AI</div>
+                    <div class="footer-tagline">Handwritten-style biology notes, generated instantly for easier learning.</div>
+                </div>
+                <!-- <div class="text-sm-end">
+                    <span class="topic-badge"><i class="bi bi-journal-check"></i> 70+ Humanized Topics</span>
+                </div> -->
+            </div>
+            <div class="footer-meta d-flex flex-wrap justify-content-between">
+                <span><i class="bi bi-mortarboard-fill me-1"></i>Built for students who learn better in simple, human words.</span>
+                <span><i class="bi bi-shield-check me-1"></i>Works fully offline — no data leaves your browser.</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ============================= -->
+    <!-- Bootstrap 5 JS Bundle (CDN)     -->
+    <!-- ============================= -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- ============================= -->
+    <!-- html2pdf.js (CDN) for PDF export -->
+    <!-- ============================= -->
+    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+
+    <!-- ============================= -->
+    <!-- Fallback embedded dataset (used only if fetch('data.json') -->
+    <!-- fails — e.g. opening this file directly via file://)       -->
+    <!-- ============================= -->
+    <script src="data-embedded.js"></script>
+
+    <!-- ============================= -->
+    <!-- Custom JS (this project's own app logic) -->
+    <!-- ============================= -->
+    <script src="script.js"></script>
+</body>
+</html>
